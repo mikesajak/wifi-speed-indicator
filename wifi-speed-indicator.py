@@ -24,56 +24,61 @@ class AppIndicator (appindicator.Indicator):
     iwconfig_cmd = '/sbin/iwconfig'
     ifaces = []
     cur_if = None
-
+    update_time = 5
 
     def __init__(self, name, icon, category):
         appindicator.Indicator.__init__(self, name, icon, category)
         self.set_status(appindicator.STATUS_ACTIVE)
-        self.menu = gtk.Menu()
-        self.set_menu(self.menu)
         self.update()
-        self.menu_setup()
+        self.menu = self.create_menu()
+        self.set_menu(self.menu)
         self.menu.show_all()
 
         gtk.main()
 
-    def clear_menu_ifaces(self):
-        for item in self.iface_menu_items:
-            self.menu.remove(item)
-        self.iface_menu_items = []
+    def set_cur_iff(self, item, iff):
+        self.cur_iff = iff
 
-    def update_ifaces_menu_items(self):
-        self.clear_menu_ifaces()
+    def set_update_time(self, item, time):
+        self.update_time = time
 
+    def create_menu(self):
+        menu = gtk.Menu()
         if len(self.ifaces) > 0:
             for iff in self.ifaces:
-                label = iff
-                item = gtk.MenuItem(label)
-                self.iface_menu_items.append(item)
-                self.menu.prepend(item)
+                item = gtk.MenuItem(iff)
+                item.connect('activate', self.set_cur_iff, iff)
+                menu.append(item)
         else:
             item = gtk.MenuItem('No wireless interfaces detected')
-            self.menu.prepend(item)
+            item.set_sensitive(False) # disabled - grayed out
+            menu.append(item)
 
+        menu.append(gtk.SeparatorMenuItem())
+        item = gtk.MenuItem('Update time')
+        submenu = gtk.Menu()
+        for i in [1,2,3,5,7,10,15,30,45,60]:
+            item2 = gtk.MenuItem(str(i) + ' s')
+            item2.connect('activate', self.set_update_time, i)
+            submenu.append(item2)
+        item.set_submenu(submenu)
+        menu.append(item)
+        menu.append(gtk.SeparatorMenuItem())
+        item = gtk.MenuItem('Quit')
+        item.connect('activate', self.quit)
+        menu.append(item)
 
-    def menu_setup(self):
-        self.update_ifaces_menu_items()
-
-        self.menu.append(gtk.SeparatorMenuItem())
-        # self.menu.append(gtk.MenuItem())
-        self.quit_item = gtk.MenuItem("Quit")
-        self.menu.append(self.quit_item)
-        self.quit_item.connect("activate", self.quit)
+        return menu
 
     def update(self):
-        gobject.timeout_add(5000, self.update)
+        gobject.timeout_add(self.update_time * 1000, self.update)
 
         self.ifaces = self.get_wifi_interfaces()
         # if interface not selected then select first available
         if self.cur_if is None and len(self.ifaces) > 0:
             self.cur_if = self.ifaces[0]
 
-        self.update_ifaces_menu_items()
+        # self.update_ifaces_menu_items()
 
         iff_speed = self.get_wifi_speed(self.cur_if)
         if iff_speed is not None:
@@ -107,4 +112,4 @@ class AppIndicator (appindicator.Indicator):
 
 
 
-AppIndicator('world-clock', 'radiotray-on', 0)
+AppIndicator('world-clock', 'radiotray-off', 0)
