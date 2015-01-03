@@ -44,7 +44,11 @@ class AppIndicator (appindicator.Indicator):
 
     def create_menu(self):
         menu = gtk.Menu()
+
         if len(self.ifaces) > 0:
+            item = gtk.MenuItem("Wireless interfaces")
+            item.set_sensitive(False)
+            menu.append(item)
             for iff in self.ifaces:
                 item = gtk.MenuItem(iff)
                 item.connect('activate', self.set_cur_iff, iff)
