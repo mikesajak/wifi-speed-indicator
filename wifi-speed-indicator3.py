@@ -5,8 +5,10 @@ try:
     from gi.repository import AppIndicator3 as appindicator
 except:
     from gi.repository import AppIndicator as appindicator
+
 import subprocess
 import re
+from simpleconfigparser import simpleconfigparser
 
 IWCONFIG_CMD = '/sbin/iwconfig'
 
@@ -15,7 +17,7 @@ def get_wifi_speed(iff):
     for line in p.stdout:
         m = re.search('Bit Rate=([\d\.]+) (\S+)', line)
         if m is not None:
-            print ("Speed: " + m.group(0))
+            # print ("Speed: " + m.group(0))
             return m.group(1) + " " + m.group(2)
     return None
 
@@ -28,31 +30,73 @@ def get_wifi_interfaces():
             m = re.search('^(\S+)\s+\S+', line)
             if m is not None:
                 iffs.append(m.group(1))
-    print("Iffs: " + str(iffs))
+    # print("Iffs: " + str(iffs))
     return iffs
 
 class WifiSpeedIndicator(object):
+
+    UPDATE_TIMES = [1,2,3,5,7,10,15,30,45,60]
+    DEFAULT_UPDATE_TIME = 5
+
     ifaces = []
     cur_iface = None
     update_time = 5
+
+    CONFIG_FILE = 'wifi-speed-indicator.ini'
 
     def __init__(self):
         self.indicator = appindicator.Indicator.new('wifi-speed-indicator',
                                                     'radiotray-on',
                                                     appindicator.IndicatorCategory.APPLICATION_STATUS)
         self.indicator.set_status(appindicator.IndicatorStatus.ACTIVE)
+
+        self.load_config(self.CONFIG_FILE)
+
         self.update()
 
         Gtk.main()
 
+    def load_config(self, filename):
+        config = simpleconfigparser()
+        config.read(filename)
+        print('Load config from: %s' % self.CONFIG_FILE)
+        try:
+            update_time = int(config['settings']['update_time'])
+            if update_time not in self.UPDATE_TIMES:
+                print('Config value update_time=%d is invalid. Using default value=%d.' % (update_time, self.DEFAULT_UPDATE_TIME))
+                print('Allowed values for update_time: %s' % str(self.UPDATE_TIMES))
+                update_time = self.DEFAULT_UPDATE_TIME
+        except Exception as ex:
+            print('Error reading config: ' + str(ex))
+            update_time = self.DEFAULT_UPDATE_TIME
+
+        self.update_time = update_time
+
+        selected_iface = config['settings']['interface']
+        self.cur_iface = selected_iface
+
+        print('Using config: interface=%s, update_time=%d' % (self.cur_iface, self.update_time))
+
+    def save_config(self, filename):
+        config = simpleconfigparser()
+        if self.cur_iface is not None:
+            config['settings']['interface'] = self.cur_iface
+        config['settings']['update_time'] = str(self.update_time)
+
+        with open(filename, 'wb') as handle:
+            config.write(handle)
+
     def quit_handler(self, *data):
+        self.save_config(self.CONFIG_FILE)
         Gtk.main_quit()
 
     def set_cur_iface_handler(self, item, iface):
         self.cur_iface = iface
+        self.save_config(self.CONFIG_FILE)
 
     def set_update_time_handler(self, item, time):
         self.update_time = time
+        self.save_config(self.CONFIG_FILE)
 
     def update_menu(self):
         self.menu = self.build_menu(self.ifaces, self.cur_iface)
@@ -89,7 +133,7 @@ class WifiSpeedIndicator(object):
         item = Gtk.MenuItem('Update time')
         submenu = Gtk.Menu()
         first_item = None
-        for i in [1,2,3,5,7,10,15,30,45,60]:
+        for i in self.UPDATE_TIMES:
             time_label = str(i) + ' s'
             if first_item is None:
                 item2 = Gtk.RadioMenuItem(label = time_label)
@@ -119,6 +163,14 @@ class WifiSpeedIndicator(object):
         old_ifaces = self.ifaces
         self.ifaces = get_wifi_interfaces()
 
+        if self.cur_iface not in self.ifaces:
+            print('Selected interface "%s" doesn\'t exist or does not have wireless extensions.' % self.cur_iface)
+            print('Selecting first from available wireless interfaces: %s' % str(self.ifaces))
+            if len(self.ifaces) > 0:
+                self.cur_iface = self.ifaces[0]
+            else:
+                self.cur_iface = None
+
         # if interface not selected then select first available
         if self.cur_iface is None and len(self.ifaces) > 0:
             self.cur_iface = self.ifaces[0]
@@ -132,5 +184,6 @@ class WifiSpeedIndicator(object):
             self.indicator.set_label(iff_speed, '')
         else:
             self.indicator.set_label('X', '')
+
 
 WifiSpeedIndicator()
